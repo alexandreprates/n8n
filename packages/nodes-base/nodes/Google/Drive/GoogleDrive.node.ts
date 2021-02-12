@@ -5,27 +5,30 @@ import {
 
 import {
 	IDataObject,
-	INodeTypeDescription,
 	INodeExecutionData,
 	INodeType,
+	INodeTypeDescription,
 } from 'n8n-workflow';
+
+import uuid = require('uuid');
 
 import {
 	googleApiRequest,
+	googleApiRequestAllItems,
 } from './GenericFunctions';
 
 export class GoogleDrive implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Google Drive',
 		name: 'googleDrive',
-		icon: 'file:googleDrive.png',
+		icon: 'file:googleDrive.svg',
 		group: ['input'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
 		description: 'Access data on Google Drive',
 		defaults: {
 			name: 'Google Drive',
-			color: '#3f87f2',
+			color: '#4285F4',
 		},
 		inputs: ['main'],
 		outputs: ['main'],
@@ -76,6 +79,10 @@ export class GoogleDrive implements INodeType {
 				type: 'options',
 				options: [
 					{
+						name: 'Drive',
+						value: 'drive',
+					},
+					{
 						name: 'File',
 						value: 'file',
 					},
@@ -125,6 +132,11 @@ export class GoogleDrive implements INodeType {
 						description: 'List files and folders',
 					},
 					{
+						name: 'Share',
+						value: 'share',
+						description: 'Share a file',
+					},
+					{
 						name: 'Upload',
 						value: 'upload',
 						description: 'Upload a file',
@@ -156,6 +168,11 @@ export class GoogleDrive implements INodeType {
 						value: 'delete',
 						description: 'Delete a folder',
 					},
+					{
+						name: 'Share',
+						value: 'share',
+						description: 'Share a folder',
+					},
 				],
 				default: 'create',
 				description: 'The operation to perform.',
@@ -178,7 +195,7 @@ export class GoogleDrive implements INodeType {
 				displayOptions: {
 					show: {
 						operation: [
-							'copy'
+							'copy',
 						],
 						resource: [
 							'file',
@@ -201,7 +218,7 @@ export class GoogleDrive implements INodeType {
 				displayOptions: {
 					show: {
 						operation: [
-							'delete'
+							'delete',
 						],
 						resource: [
 							'file',
@@ -225,7 +242,7 @@ export class GoogleDrive implements INodeType {
 				displayOptions: {
 					show: {
 						operation: [
-							'download'
+							'download',
 						],
 						resource: [
 							'file',
@@ -243,7 +260,7 @@ export class GoogleDrive implements INodeType {
 				displayOptions: {
 					show: {
 						operation: [
-							'download'
+							'download',
 						],
 						resource: [
 							'file',
@@ -265,7 +282,7 @@ export class GoogleDrive implements INodeType {
 				displayOptions: {
 					show: {
 						operation: [
-							'list'
+							'list',
 						],
 						resource: [
 							'file',
@@ -351,15 +368,15 @@ export class GoogleDrive implements INodeType {
 								options: [
 									{
 										name: 'Contains',
-										value: 'contains'
+										value: 'contains',
 									},
 									{
 										name: 'Is',
-										value: 'is'
+										value: 'is',
 									},
 									{
 										name: 'Is Not',
-										value: 'isNot'
+										value: 'isNot',
 									},
 
 								],
@@ -373,7 +390,7 @@ export class GoogleDrive implements INodeType {
 								default: '',
 								description: 'The value for operation.',
 							},
-						]
+						],
 					},
 					{
 						name: 'mimeType',
@@ -472,11 +489,227 @@ export class GoogleDrive implements INodeType {
 								},
 								description: 'Custom Mime Type',
 							},
-						]
-					}
+						],
+					},
 				],
 			},
 
+
+			// ----------------------------------
+			//         file:share
+			// ----------------------------------
+			{
+				displayName: 'File ID',
+				name: 'fileId',
+				type: 'string',
+				default: '',
+				required: true,
+				displayOptions: {
+					show: {
+						operation: [
+							'share',
+						],
+						resource: [
+							'file',
+							'folder',
+						],
+					},
+				},
+				description: 'The ID of the file or shared drive.',
+			},
+			{
+				displayName: 'Permissions',
+				name: 'permissionsUi',
+				placeholder: 'Add Permission',
+				type: 'fixedCollection',
+				default: '',
+				typeOptions: {
+					multipleValues: false,
+				},
+				displayOptions: {
+					show: {
+						resource: [
+							'file',
+							'folder',
+						],
+						operation: [
+							'share',
+						],
+					},
+				},
+				options: [
+					{
+						displayName: 'Permission',
+						name: 'permissionsValues',
+						values: [
+							{
+								displayName: 'Role',
+								name: 'role',
+								type: 'options',
+								options: [
+									{
+										name: 'Owner',
+										value: 'owner',
+									},
+									{
+										name: 'Organizer',
+										value: 'organizer',
+									},
+									{
+										name: 'File Organizer',
+										value: 'fileOrganizer',
+									},
+									{
+										name: 'Writer',
+										value: 'writer',
+									},
+									{
+										name: 'Commenter',
+										value: 'commenter',
+									},
+									{
+										name: 'Reader',
+										value: 'reader',
+									},
+								],
+								default: '',
+							},
+							{
+								displayName: 'Type',
+								name: 'type',
+								type: 'options',
+								options: [
+									{
+										name: 'User',
+										value: 'user',
+									},
+									{
+										name: 'Group',
+										value: 'group',
+									},
+									{
+										name: 'Domain',
+										value: 'domain',
+									},
+									{
+										name: 'Anyone',
+										value: 'anyone',
+									},
+								],
+								default: '',
+								description: 'Information about the different types can be found <a href="https://developers.google.com/drive/api/v3/ref-roles" target="_blank">here</a>.',
+							},
+							{
+								displayName: 'Email Address',
+								name: 'emailAddress',
+								type: 'string',
+								displayOptions: {
+									show: {
+										type: [
+											'user',
+											'group',
+										],
+									},
+								},
+								default: '',
+								description: 'The email address of the user or group to which this permission refers',
+							},
+							{
+								displayName: 'Domain',
+								name: 'domain',
+								type: 'string',
+								displayOptions: {
+									show: {
+										type: [
+											'domain',
+										],
+									},
+								},
+								default: '',
+								description: 'The domain to which this permission refers',
+							},
+							{
+								displayName: 'Allow File Discovery',
+								name: 'allowFileDiscovery',
+								type: 'boolean',
+								displayOptions: {
+									show: {
+										type: [
+											'domain',
+											'anyone',
+										],
+									},
+								},
+								default: false,
+								description: 'Whether the permission allows the file to be discovered through search',
+							},
+						],
+					},
+				],
+			},
+
+			{
+				displayName: 'Binary Data',
+				name: 'binaryData',
+				type: 'boolean',
+				default: false,
+				displayOptions: {
+					show: {
+						operation: [
+							'upload',
+						],
+						resource: [
+							'file',
+						],
+					},
+				},
+				description: 'If the data to upload should be taken from binary field.',
+			},
+			{
+				displayName: 'File Content',
+				name: 'fileContent',
+				type: 'string',
+				default: '',
+				displayOptions: {
+					show: {
+						operation: [
+							'upload',
+						],
+						resource: [
+							'file',
+						],
+						binaryData: [
+							false,
+						],
+					},
+
+				},
+				placeholder: '',
+				description: 'The text content of the file to upload.',
+			},
+			{
+				displayName: 'Binary Property',
+				name: 'binaryPropertyName',
+				type: 'string',
+				default: 'data',
+				required: true,
+				displayOptions: {
+					show: {
+						operation: [
+							'upload',
+						],
+						resource: [
+							'file',
+						],
+						binaryData: [
+							true,
+						],
+					},
+
+				},
+				placeholder: '',
+				description: 'Name of the binary property which contains<br />the data for the file to be uploaded.',
+			},
 
 			// ----------------------------------
 			//         file:upload
@@ -490,7 +723,7 @@ export class GoogleDrive implements INodeType {
 				displayOptions: {
 					show: {
 						operation: [
-							'upload'
+							'upload',
 						],
 						resource: [
 							'file',
@@ -520,69 +753,6 @@ export class GoogleDrive implements INodeType {
 				},
 				description: 'The IDs of the parent folders which contain the file.',
 			},
-			{
-				displayName: 'Binary Data',
-				name: 'binaryData',
-				type: 'boolean',
-				default: false,
-				displayOptions: {
-					show: {
-						operation: [
-							'upload'
-						],
-						resource: [
-							'file',
-						],
-					},
-				},
-				description: 'If the data to upload should be taken from binary field.',
-			},
-			{
-				displayName: 'File Content',
-				name: 'fileContent',
-				type: 'string',
-				default: '',
-				displayOptions: {
-					show: {
-						operation: [
-							'upload'
-						],
-						resource: [
-							'file',
-						],
-						binaryData: [
-							false
-						],
-					},
-
-				},
-				placeholder: '',
-				description: 'The text content of the file to upload.',
-			},
-			{
-				displayName: 'Binary Property',
-				name: 'binaryPropertyName',
-				type: 'string',
-				default: 'data',
-				required: true,
-				displayOptions: {
-					show: {
-						operation: [
-							'upload'
-						],
-						resource: [
-							'file',
-						],
-						binaryData: [
-							true
-						],
-					},
-
-				},
-				placeholder: '',
-				description: 'Name of the binary property which contains<br />the data for the file to be uploaded.',
-			},
-
 
 			// ----------------------------------
 			//         folder
@@ -600,7 +770,7 @@ export class GoogleDrive implements INodeType {
 				displayOptions: {
 					show: {
 						operation: [
-							'create'
+							'create',
 						],
 						resource: [
 							'folder',
@@ -616,11 +786,103 @@ export class GoogleDrive implements INodeType {
 				type: 'collection',
 				placeholder: 'Add Option',
 				default: {},
+				displayOptions: {
+					hide: {
+						resource: [
+							'drive',
+						],
+					},
+				},
 				options: [
+					{
+						displayName: 'Email Message',
+						name: 'emailMessage',
+						type: 'string',
+						displayOptions: {
+							show: {
+								'/operation': [
+									'share',
+								],
+								'/resource': [
+									'file',
+									'folder',
+								],
+							},
+						},
+						default: '',
+						description: 'A plain text custom message to include in the notification email.',
+					},
+					{
+						displayName: 'Enforce Single Parent',
+						name: 'enforceSingleParent',
+						type: 'boolean',
+						displayOptions: {
+							show: {
+								'/operation': [
+									'share',
+								],
+								'/resource': [
+									'file',
+									'folder',
+								],
+							},
+						},
+						default: false,
+						description: `Set to true to opt in to API behavior that aims for all items to have exactly one parent<br>
+						This parameter only takes effect if the item is not in a shared drive`,
+					},
 					{
 						displayName: 'Fields',
 						name: 'fields',
 						type: 'multiOptions',
+						displayOptions: {
+							show: {
+								'/operation': [
+									'share',
+								],
+								'/resource': [
+									'file',
+									'folder',
+								],
+							},
+						},
+						options: [
+							{
+								name: '*',
+								value: '*',
+								description: 'All fields.',
+							},
+							{
+								name: 'Email Address',
+								value: 'emailAddress',
+							},
+							{
+								name: 'Display Name',
+								value: 'displayName',
+							},
+							{
+								name: 'Deleted',
+								value: 'deleted',
+							},
+						],
+						default: [],
+						description: 'The fields to return.',
+					},
+					{
+						displayName: 'Fields',
+						name: 'fields',
+						type: 'multiOptions',
+						displayOptions: {
+							hide: {
+								'/operation': [
+									'share',
+								],
+								'/resource': [
+									'file',
+									'folder',
+								],
+							},
+						},
 						options: [
 							{
 								name: '*',
@@ -696,6 +958,97 @@ export class GoogleDrive implements INodeType {
 						default: [],
 						description: 'The fields to return.',
 					},
+					{
+						displayName: 'Move To New Owners Root',
+						name: 'moveToNewOwnersRoot',
+						type: 'boolean',
+						displayOptions: {
+							show: {
+								'/operation': [
+									'share',
+								],
+								'/resource': [
+									'file',
+									'folder',
+								],
+							},
+						},
+						default: '',
+						description: `This parameter only takes effect if the item is not in a shared drive and the request is attempting to transfer the ownership of the item.<br>
+						When set to true, the item is moved to the new owner's My Drive root folder and all prior parents removed`,
+					},
+					{
+						displayName: 'Send Notification Email',
+						name: 'sendNotificationEmail',
+						type: 'boolean',
+						displayOptions: {
+							show: {
+								'/operation': [
+									'share',
+								],
+								'/resource': [
+									'file',
+									'folder',
+								],
+							},
+						},
+						default: false,
+						description: 'Whether to send a notification email when sharing to users or groups',
+					},
+					{
+						displayName: 'Supports All Drives',
+						name: 'supportsAllDrives',
+						type: 'boolean',
+						displayOptions: {
+							show: {
+								'/operation': [
+									'share',
+								],
+								'/resource': [
+									'file',
+									'folder',
+								],
+							},
+						},
+						default: false,
+						description: 'Whether the requesting application supports both My Drives and shared drives',
+					},
+					{
+						displayName: 'Transfer Ownership',
+						name: 'transferOwnership',
+						type: 'boolean',
+						displayOptions: {
+							show: {
+								'/operation': [
+									'share',
+								],
+								'/resource': [
+									'file',
+									'folder',
+								],
+							},
+						},
+						default: false,
+						description: 'Whether to transfer ownership to the specified user and downgrade the current owner to a writer.',
+					},
+					{
+						displayName: 'Use Domain Admin Access',
+						name: 'useDomainAdminAccess',
+						type: 'boolean',
+						displayOptions: {
+							show: {
+								'/operation': [
+									'share',
+								],
+								'/resource': [
+									'file',
+									'folder',
+								],
+							},
+						},
+						default: false,
+						description: `Perform the operation as domain administrator, i.e. if you are an administrator of the domain to which the shared drive belongs, you will be granted access automatically`,
+					},
 
 					{
 						displayName: 'File Name',
@@ -704,7 +1057,7 @@ export class GoogleDrive implements INodeType {
 						displayOptions: {
 							show: {
 								'/operation': [
-									'copy'
+									'copy',
 								],
 								'/resource': [
 									'file',
@@ -744,7 +1097,7 @@ export class GoogleDrive implements INodeType {
 						displayOptions: {
 							show: {
 								'/operation': [
-									'list'
+									'list',
 								],
 								'/resource': [
 									'file',
@@ -781,7 +1134,7 @@ export class GoogleDrive implements INodeType {
 						displayOptions: {
 							show: {
 								'/operation': [
-									'list'
+									'list',
 								],
 								'/resource': [
 									'file',
@@ -815,7 +1168,7 @@ export class GoogleDrive implements INodeType {
 						description: 'The corpora to operate on.',
 					},
 					{
-						displayName: 'Drive Id',
+						displayName: 'Drive ID',
 						name: 'driveId',
 						type: 'string',
 						default: '',
@@ -823,21 +1176,545 @@ export class GoogleDrive implements INodeType {
 						displayOptions: {
 							show: {
 								'/operation': [
-									'list'
+									'list',
 								],
 								'/resource': [
 									'file',
 								],
 								corpora: [
-									'drive'
-								]
+									'drive',
+								],
 							},
 						},
 						description: 'ID of the shared drive to search. The driveId parameter must be specified if and only if corpora is set to drive.',
 					},
 				],
 			},
-
+			// ----------------------------------
+			//         drive
+			// ----------------------------------
+			{
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				displayOptions: {
+					show: {
+						resource: [
+							'drive',
+						],
+					},
+				},
+				options: [
+					{
+						name: 'Create',
+						value: 'create',
+						description: 'Create a drive',
+					},
+					{
+						name: 'Delete',
+						value: 'delete',
+						description: 'Delete a drive',
+					},
+					{
+						name: 'Get',
+						value: 'get',
+						description: 'Get a drive',
+					},
+					{
+						name: 'List',
+						value: 'list',
+						description: 'List all drives',
+					},
+					{
+						name: 'Update',
+						value: 'update',
+						description: 'Update a drive',
+					},
+				],
+				default: 'create',
+				description: 'The operation to perform.',
+			},
+			// ----------------------------------
+			//         drive:create
+			// ----------------------------------
+			{
+				displayName: 'Name',
+				name: 'name',
+				type: 'string',
+				default: '',
+				required: false,
+				displayOptions: {
+					show: {
+						operation: [
+							'create',
+						],
+						resource: [
+							'drive',
+						],
+					},
+				},
+				description: 'The name of this shared drive.',
+			},
+			{
+				displayName: 'Options',
+				name: 'options',
+				type: 'collection',
+				placeholder: 'Add Option',
+				default: {},
+				displayOptions: {
+					show: {
+						operation: [
+							'create',
+						],
+						resource: [
+							'drive',
+						],
+					},
+				},
+				options: [
+					{
+						displayName: 'Capabilities',
+						name: 'capabilities',
+						type: 'collection',
+						placeholder: 'Add Field',
+						default: {},
+						options: [
+							{
+								displayName: 'Can Add Children',
+								name: 'canAddChildren',
+								type: 'boolean',
+								default: false,
+								description: `Whether the current user can add children to folders in this shared drive.`,
+							},
+							{
+								displayName: 'Can Change Copy Requires Writer Permission Restriction',
+								name: 'canChangeCopyRequiresWriterPermissionRestriction',
+								type: 'boolean',
+								default: false,
+								description: `Whether the current user can change the copyRequiresWriterPermission restriction of this shared drive.`,
+							},
+							{
+								displayName: 'Can Change Domain Users Only Restriction',
+								name: 'canChangeDomainUsersOnlyRestriction',
+								type: 'boolean',
+								default: false,
+								description: `Whether the current user can change the domainUsersOnly restriction of this shared drive.`,
+							},
+							{
+								displayName: 'Can Change Drive Background',
+								name: 'canChangeDriveBackground',
+								type: 'boolean',
+								default: false,
+								description: `Whether the current user can change the background of this shared drive.`,
+							},
+							{
+								displayName: 'Can Change Drive Members Only Restriction',
+								name: 'canChangeDriveMembersOnlyRestriction',
+								type: 'boolean',
+								default: false,
+								description: `Whether the current user can change the driveMembersOnly restriction of this shared drive.`,
+							},
+							{
+								displayName: 'Can Comment',
+								name: 'canComment',
+								type: 'boolean',
+								default: false,
+								description: `Whether the current user can comment on files in this shared drive.`,
+							},
+							{
+								displayName: 'Can Copy',
+								name: 'canCopy',
+								type: 'boolean',
+								default: false,
+								description: `Whether the current user can copy files in this shared drive.`,
+							},
+							{
+								displayName: 'Can Delete Children',
+								name: 'canDeleteChildren',
+								type: 'boolean',
+								default: false,
+								description: `Whether the current user can delete children from folders in this shared drive.`,
+							},
+							{
+								displayName: 'Can Delete Drive',
+								name: 'canDeleteDrive',
+								type: 'boolean',
+								default: false,
+								description: `Whether the current user can delete this shared drive. Attempting to delete the shared drive may still fail if there are untrashed items inside the shared drive.`,
+							},
+							{
+								displayName: 'Can Download',
+								name: 'canDownload',
+								type: 'boolean',
+								default: false,
+								description: `Whether the current user can download files in this shared drive.`,
+							},
+							{
+								displayName: 'Can Edit',
+								name: 'canEdit',
+								type: 'boolean',
+								default: false,
+								description: `Whether the current user can edit files in this shared drive`,
+							},
+							{
+								displayName: 'Can List Children',
+								name: 'canListChildren',
+								type: 'boolean',
+								default: false,
+								description: `Whether the current user can list the children of folders in this shared drive.`,
+							},
+							{
+								displayName: 'Can Manage Members',
+								name: 'canManageMembers',
+								type: 'boolean',
+								default: false,
+								description: `Whether the current user can add members to this shared drive or remove them or change their role.`,
+							},
+							{
+								displayName: 'Can Read Revisions',
+								name: 'canReadRevisions',
+								type: 'boolean',
+								default: false,
+								description: `Whether the current user can read the revisions resource of files in this shared drive.`,
+							},
+							{
+								displayName: 'Can Rename',
+								name: 'canRename',
+								type: 'boolean',
+								default: false,
+								description: `Whether the current user can rename files or folders in this shared drive.`,
+							},
+							{
+								displayName: 'Can Rename Drive',
+								name: 'canRenameDrive',
+								type: 'boolean',
+								default: false,
+								description: `Whether the current user can rename this shared drive.`,
+							},
+							{
+								displayName: 'Can Share',
+								name: 'canShare',
+								type: 'boolean',
+								default: false,
+								description: `Whether the current user can rename this shared drive.`,
+							},
+							{
+								displayName: 'Can Trash Children',
+								name: 'canTrashChildren',
+								type: 'boolean',
+								default: false,
+								description: `Whether the current user can trash children from folders in this shared drive.`,
+							},
+						],
+					},
+					{
+						displayName: 'Color RGB',
+						name: 'colorRgb',
+						type: 'color',
+						default: '',
+						description: 'The color of this shared drive as an RGB hex string',
+					},
+					{
+						displayName: 'Created Time',
+						name: 'createdTime',
+						type: 'dateTime',
+						default: '',
+						description: 'The time at which the shared drive was created (RFC 3339 date-time).',
+					},
+					{
+						displayName: 'Hidden',
+						name: 'hidden',
+						type: 'boolean',
+						default: false,
+						description: 'Whether the shared drive is hidden from default view.',
+					},
+					{
+						displayName: 'Restrictions',
+						name: 'restrictions',
+						type: 'collection',
+						placeholder: 'Add Field',
+						default: {},
+						options: [
+							{
+								displayName: 'Admin Managed Restrictions',
+								name: 'adminManagedRestrictions',
+								type: 'boolean',
+								default: false,
+								description: `Whether the options to copy, print, or download files inside this shared drive,<br/>
+								should be disabled for readers and commenters. When this restriction is set to true, it will<br/>
+								override the similarly named field to true for any file inside this shared drive.`,
+							},
+							{
+								displayName: 'Copy Requires Writer Permission',
+								name: 'copyRequiresWriterPermission',
+								type: 'boolean',
+								default: false,
+								description: `Whether the options to copy, print, or download files inside this shared drive,<br/>
+								should be disabled for readers and commenters. When this restriction is set to true, it will<br/>
+								override the similarly named field to true for any file inside this shared drive.`,
+							},
+							{
+								displayName: 'Domain Users Only',
+								name: 'domainUsersOnly',
+								type: 'boolean',
+								default: false,
+								description: `Whether access to this shared drive and items inside this shared drive<br/>
+								is restricted to users of the domain to which this shared drive belongs. This restriction<br/>
+								may be overridden by other sharing policies controlled outside of this shared drive.`,
+							},
+							{
+								displayName: 'Drive Members Only',
+								name: 'driveMembersOnly',
+								type: 'boolean',
+								default: false,
+								description: `Whether access to items inside this shared drive is restricted to its members.`,
+							},
+						],
+					},
+				],
+			},
+			// ----------------------------------
+			//         drive:delete
+			// ----------------------------------
+			{
+				displayName: 'Drive ID',
+				name: 'driveId',
+				type: 'string',
+				default: '',
+				required: false,
+				displayOptions: {
+					show: {
+						operation: [
+							'delete',
+						],
+						resource: [
+							'drive',
+						],
+					},
+				},
+				description: 'The ID of the shared drive.',
+			},
+			// ----------------------------------
+			//         drive:get
+			// ----------------------------------
+			{
+				displayName: 'Drive ID',
+				name: 'driveId',
+				type: 'string',
+				default: '',
+				required: false,
+				displayOptions: {
+					show: {
+						operation: [
+							'get',
+						],
+						resource: [
+							'drive',
+						],
+					},
+				},
+				description: 'The ID of the shared drive.',
+			},
+			{
+				displayName: 'Options',
+				name: 'options',
+				type: 'collection',
+				placeholder: 'Add Option',
+				default: {},
+				displayOptions: {
+					show: {
+						operation: [
+							'get',
+						],
+						resource: [
+							'drive',
+						],
+					},
+				},
+				options: [
+					{
+						displayName: 'Use Domain Admin Access',
+						name: 'useDomainAdminAccess',
+						type: 'boolean',
+						default: false,
+						description: 'Issue the request as a domain administrator; if set to true, then the requester will be granted access if they are an administrator of the domain to which the shared drive belongs. (Default: false)',
+					},
+				],
+			},
+			// ----------------------------------
+			//         drive:list
+			// ----------------------------------
+			{
+				displayName: 'Return All',
+				name: 'returnAll',
+				type: 'boolean',
+				displayOptions: {
+					show: {
+						operation: [
+							'list',
+						],
+						resource: [
+							'drive',
+						],
+					},
+				},
+				default: false,
+				description: 'If all results should be returned or only up to a given limit.',
+			},
+			{
+				displayName: 'Limit',
+				name: 'limit',
+				type: 'number',
+				displayOptions: {
+					show: {
+						operation: [
+							'list',
+						],
+						resource: [
+							'drive',
+						],
+						returnAll: [
+							false,
+						],
+					},
+				},
+				typeOptions: {
+					minValue: 1,
+					maxValue: 200,
+				},
+				default: 100,
+				description: 'How many results to return.',
+			},
+			{
+				displayName: 'Options',
+				name: 'options',
+				type: 'collection',
+				placeholder: 'Add Option',
+				default: {},
+				displayOptions: {
+					show: {
+						operation: [
+							'list',
+						],
+						resource: [
+							'drive',
+						],
+					},
+				},
+				options: [
+					{
+						displayName: 'Query',
+						name: 'q',
+						type: 'string',
+						default: '',
+						description: 'Query string for searching shared drives. See the <a href="https://developers.google.com/drive/api/v3/search-shareddrives" target="_blank">"Search for shared drives"</a> guide for supported syntax.',
+					},
+					{
+						displayName: 'Use Domain Admin Access',
+						name: 'useDomainAdminAccess',
+						type: 'boolean',
+						default: false,
+						description: 'Issue the request as a domain administrator; if set to true, then the requester will be granted access if they are an administrator of the domain to which the shared drive belongs. (Default: false)',
+					},
+				],
+			},
+			// ----------------------------------
+			//         drive:update
+			// ----------------------------------
+			{
+				displayName: 'Drive ID',
+				name: 'driveId',
+				type: 'string',
+				default: '',
+				required: false,
+				displayOptions: {
+					show: {
+						operation: [
+							'update',
+						],
+						resource: [
+							'drive',
+						],
+					},
+				},
+				description: 'The ID of the shared drive.',
+			},
+			{
+				displayName: 'Update Fields',
+				name: 'options',
+				type: 'collection',
+				placeholder: 'Add Option',
+				default: {},
+				displayOptions: {
+					show: {
+						operation: [
+							'update',
+						],
+						resource: [
+							'drive',
+						],
+					},
+				},
+				options: [
+					{
+						displayName: 'Color RGB',
+						name: 'colorRgb',
+						type: 'color',
+						default: '',
+						description: 'The color of this shared drive as an RGB hex string',
+					},
+					{
+						displayName: 'Name',
+						name: 'name',
+						type: 'string',
+						default: '',
+						description: 'The name of this shared drive.',
+					},
+					{
+						displayName: 'Restrictions',
+						name: 'restrictions',
+						type: 'collection',
+						placeholder: 'Add Field',
+						default: {},
+						options: [
+							{
+								displayName: 'Admin Managed Restrictions',
+								name: 'adminManagedRestrictions',
+								type: 'boolean',
+								default: false,
+								description: `Whether the options to copy, print, or download files inside this shared drive,<br/>
+								should be disabled for readers and commenters. When this restriction is set to true, it will<br/>
+								override the similarly named field to true for any file inside this shared drive.`,
+							},
+							{
+								displayName: 'Copy Requires Writer Permission',
+								name: 'copyRequiresWriterPermission',
+								type: 'boolean',
+								default: false,
+								description: `Whether the options to copy, print, or download files inside this shared drive,<br/>
+								should be disabled for readers and commenters. When this restriction is set to true, it will<br/>
+								override the similarly named field to true for any file inside this shared drive.`,
+							},
+							{
+								displayName: 'Domain Users Only',
+								name: 'domainUsersOnly',
+								type: 'boolean',
+								default: false,
+								description: `Whether access to this shared drive and items inside this shared drive<br/>
+								is restricted to users of the domain to which this shared drive belongs. This restriction<br/>
+								may be overridden by other sharing policies controlled outside of this shared drive.`,
+							},
+							{
+								displayName: 'Drive Members Only',
+								name: 'driveMembersOnly',
+								type: 'boolean',
+								default: false,
+								description: `Whether access to items inside this shared drive is restricted to its members.`,
+							},
+						],
+					},
+				],
+			},
 		],
 	};
 
@@ -850,7 +1727,7 @@ export class GoogleDrive implements INodeType {
 		const operation = this.getNodeParameter('operation', 0) as string;
 
 		for (let i = 0; i < items.length; i++) {
-			const options = this.getNodeParameter('options', i) as IDataObject;
+			const options = this.getNodeParameter('options', i, {}) as IDataObject;
 
 			let queryFields = 'id, name';
 			if (options && options.fields) {
@@ -862,7 +1739,89 @@ export class GoogleDrive implements INodeType {
 				}
 			}
 
-			if (resource === 'file') {
+			if (resource === 'drive') {
+				if (operation === 'create') {
+					// ----------------------------------
+					//         create
+					// ----------------------------------
+
+					const name = this.getNodeParameter('name', i) as string;
+
+					const body: IDataObject = {
+						name,
+					};
+
+					Object.assign(body, options);
+
+					const response = await googleApiRequest.call(this, 'POST', `/drive/v3/drives`, body, { requestId: uuid() });
+
+					returnData.push(response as IDataObject);
+				}
+				if (operation === 'delete') {
+					// ----------------------------------
+					//         delete
+					// ----------------------------------
+
+					const driveId = this.getNodeParameter('driveId', i) as string;
+
+					await googleApiRequest.call(this, 'DELETE', `/drive/v3/drives/${driveId}`);
+
+					returnData.push({ success: true });
+				}
+				if (operation === 'get') {
+					// ----------------------------------
+					//         get
+					// ----------------------------------
+
+					const driveId = this.getNodeParameter('driveId', i) as string;
+
+					const qs: IDataObject = {};
+
+					Object.assign(qs, options);
+
+					const response = await googleApiRequest.call(this, 'GET', `/drive/v3/drives/${driveId}`, {}, qs);
+
+					returnData.push(response as IDataObject);
+				}
+				if (operation === 'list') {
+					// ----------------------------------
+					//         list
+					// ----------------------------------
+
+					const returnAll = this.getNodeParameter('returnAll', i) as boolean;
+
+					const qs: IDataObject = {};
+
+					let response: IDataObject[] = [];
+
+					Object.assign(qs, options);
+
+					if (returnAll === true) {
+						response = await googleApiRequestAllItems.call(this, 'drives', 'GET', `/drive/v3/drives`, {}, qs);
+					} else {
+						qs.pageSize = this.getNodeParameter('limit', i) as number;
+						const data = await googleApiRequest.call(this, 'GET', `/drive/v3/drives`, {}, qs);
+						response = data.drives as IDataObject[];
+					}
+					returnData.push.apply(returnData, response);
+				}
+				if (operation === 'update') {
+					// ----------------------------------
+					//         update
+					// ----------------------------------
+
+					const driveId = this.getNodeParameter('driveId', i) as string;
+
+					const body: IDataObject = {};
+
+					Object.assign(body, options);
+
+					const response = await googleApiRequest.call(this, 'PATCH', `/drive/v3/drives/${driveId}`, body);
+
+					returnData.push(response as IDataObject);
+				}
+
+			} else if (resource === 'file') {
 				if (operation === 'copy') {
 					// ----------------------------------
 					//         copy
@@ -1017,6 +1976,7 @@ export class GoogleDrive implements INodeType {
 					// ----------------------------------
 					//         upload
 					// ----------------------------------
+					const options = this.getNodeParameter('options', i) as IDataObject;
 
 					let mimeType = 'text/plain';
 					let body;
@@ -1076,6 +2036,8 @@ export class GoogleDrive implements INodeType {
 
 					qs = {
 						addParents: parents.join(','),
+						// When set to true shared drives can be used.
+						supportsAllDrives: true,
 					};
 
 					response = await googleApiRequest.call(this, 'PATCH', `/drive/v3/files/${JSON.parse(response).id}`, body, qs);
@@ -1121,6 +2083,32 @@ export class GoogleDrive implements INodeType {
 						fileId,
 						success: true,
 					});
+				}
+				if (operation === 'share') {
+
+					const fileId = this.getNodeParameter('fileId', i) as string;
+
+					const permissions = this.getNodeParameter('permissionsUi', i) as IDataObject;
+
+					const options = this.getNodeParameter('options', i) as IDataObject;
+
+					const body: IDataObject = {};
+
+					const qs: IDataObject = {};
+
+					if (permissions.permissionsValues) {
+						Object.assign(body, permissions.permissionsValues);
+					}
+
+					Object.assign(qs, options);
+
+					if (qs.fields) {
+						qs.fields = (qs.fields as string[]).join(',');
+					}
+
+					const response = await googleApiRequest.call(this, 'POST', `/drive/v3/files/${fileId}/permissions`, body, qs);
+
+					returnData.push(response as IDataObject);
 				}
 			} else {
 				throw new Error(`The resource "${resource}" is not known!`);

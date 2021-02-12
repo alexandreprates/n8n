@@ -1,17 +1,17 @@
 import {
-	IActivationError,
 	Db,
-	NodeTypes,
+	IActivationError,
 	IResponseCallbackData,
+	IWebhookDb,
 	IWorkflowDb,
 	IWorkflowExecutionDataProcess,
+	NodeTypes,
 	ResponseHelper,
 	WebhookHelpers,
 	WorkflowCredentials,
+	WorkflowExecuteAdditionalData,
 	WorkflowHelpers,
 	WorkflowRunner,
-	WorkflowExecuteAdditionalData,
-	IWebhookDb,
 } from './';
 
 import {
@@ -20,14 +20,15 @@ import {
 } from 'n8n-core';
 
 import {
+	IDataObject,
 	IExecuteData,
 	IGetExecutePollFunctions,
 	IGetExecuteTriggerFunctions,
 	INode,
 	INodeExecutionData,
 	IRunExecutionData,
-	NodeHelpers,
 	IWorkflowExecuteAdditionalData as IWorkflowExecuteAdditionalDataWorkflow,
+	NodeHelpers,
 	WebhookHttpMethod,
 	Workflow,
 	WorkflowExecuteMode,
@@ -75,6 +76,10 @@ export class ActiveWorkflowRunner {
 		}
 	}
 
+	async initWebhooks() {
+		this.activeWorkflows = new ActiveWorkflows();
+	}
+
 	/**
 	 * Removes all the currently active workflows
 	 *
@@ -116,12 +121,57 @@ export class ActiveWorkflowRunner {
 			throw new ResponseHelper.ResponseError('The "activeWorkflows" instance did not get initialized yet.', 404, 404);
 		}
 
-		const webhook = await Db.collections.Webhook?.findOne({ webhookPath: path, method: httpMethod }) as IWebhookDb;
+		// Reset request parameters
+		req.params = {};
 
-		// check if something exist
+		// Remove trailing slash
+		if (path.endsWith('/')) {
+			path = path.slice(0, -1);
+		}
+
+		let webhook = await Db.collections.Webhook?.findOne({ webhookPath: path, method: httpMethod }) as IWebhookDb;
+		let webhookId: string | undefined;
+
+		// check if path is dynamic
 		if (webhook === undefined) {
-			// The requested webhook is not registered
-			throw new ResponseHelper.ResponseError(`The requested webhook "${httpMethod} ${path}" is not registered.`, 404, 404);
+			// check if a dynamic webhook path exists
+			const pathElements = path.split('/');
+			webhookId = pathElements.shift();
+			const dynamicWebhooks = await Db.collections.Webhook?.find({ webhookId, method: httpMethod, pathLength: pathElements.length });
+			if (dynamicWebhooks === undefined || dynamicWebhooks.length === 0) {
+				// The requested webhook is not registered
+				throw new ResponseHelper.ResponseError(`The requested webhook "${httpMethod} ${path}" is not registered.`, 404, 404);
+			}
+
+			let maxMatches = 0;
+			const pathElementsSet = new Set(pathElements);
+			// check if static elements match in path
+			// if more results have been returned choose the one with the most static-route matches
+			dynamicWebhooks.forEach(dynamicWebhook => {
+				const staticElements = dynamicWebhook.webhookPath.split('/').filter(ele => !ele.startsWith(':'));
+				const allStaticExist = staticElements.every(staticEle => pathElementsSet.has(staticEle));
+
+				if (allStaticExist && staticElements.length > maxMatches) {
+					maxMatches = staticElements.length;
+					webhook = dynamicWebhook;
+				}
+				// handle routes with no static elements
+				else if (staticElements.length === 0 && !webhook) {
+					webhook = dynamicWebhook;
+				}
+			});
+			if (webhook === undefined) {
+				throw new ResponseHelper.ResponseError(`The requested webhook "${httpMethod} ${path}" is not registered.`, 404, 404);
+			}
+
+			path = webhook!.webhookPath;
+			// extracting params from path
+			webhook!.webhookPath.split('/').forEach((ele, index) => {
+				if (ele.startsWith(':')) {
+					// write params to req.params
+					req.params[ele.slice(1)] = pathElements[index];
+				}
+			});
 		}
 
 		const workflowData = await Db.collections.Workflow!.findOne(webhook.workflowId);
@@ -181,8 +231,9 @@ export class ActiveWorkflowRunner {
 	 * @returns {string[]}
 	 * @memberof ActiveWorkflowRunner
 	 */
-	getActiveWorkflows(): Promise<IWorkflowDb[]> {
-		return Db.collections.Workflow?.find({ where: { active: true }, select: ['id'] }) as Promise<IWorkflowDb[]>;
+	async getActiveWorkflows(): Promise<IWorkflowDb[]> {
+		const activeWorkflows = await Db.collections.Workflow?.find({ where: { active: true }, select: ['id'] }) as IWorkflowDb[];
+		return activeWorkflows.filter(workflow => this.activationErrors[workflow.id.toString()] === undefined);
 	}
 
 
@@ -234,7 +285,7 @@ export class ActiveWorkflowRunner {
 			path = node.parameters.path as string;
 
 			if (node.parameters.path === undefined) {
-				path = workflow.getSimpleParameterValue(node, webhookData.webhookDescription['path']) as string | undefined;
+				path = workflow.expression.getSimpleParameterValue(node, webhookData.webhookDescription['path'], mode) as string | undefined;
 
 				if (path === undefined) {
 					// TODO: Use a proper logger
@@ -243,7 +294,7 @@ export class ActiveWorkflowRunner {
 				}
 			}
 
-			const isFullPath: boolean = workflow.getSimpleParameterValue(node, webhookData.webhookDescription['isFullPath'], false) as boolean;
+			const isFullPath: boolean = workflow.expression.getSimpleParameterValue(node, webhookData.webhookDescription['isFullPath'], mode, false) as boolean;
 
 			const webhook = {
 				workflowId: webhookData.workflowId,
@@ -252,29 +303,42 @@ export class ActiveWorkflowRunner {
 				method: webhookData.httpMethod,
 			} as IWebhookDb;
 
+			if (webhook.webhookPath.startsWith('/')) {
+				webhook.webhookPath = webhook.webhookPath.slice(1);
+			}
+			if (webhook.webhookPath.endsWith('/')) {
+				webhook.webhookPath = webhook.webhookPath.slice(0, -1);
+			}
+
+			if ((path.startsWith(':') || path.includes('/:')) && node.webhookId) {
+				webhook.webhookId = node.webhookId;
+				webhook.pathLength = webhook.webhookPath.split('/').length;
+			}
+
 			try {
 
 				await Db.collections.Webhook?.insert(webhook);
 
 				const webhookExists = await workflow.runWebhookMethod('checkExists', webhookData, NodeExecuteFunctions, mode, false);
-				if (webhookExists === false) {
+				if (webhookExists !== true) {
 					// If webhook does not exist yet create it
 					await workflow.runWebhookMethod('create', webhookData, NodeExecuteFunctions, mode, false);
 				}
 
 			} catch (error) {
+				try {
+					await this.removeWorkflowWebhooks(workflow.id as string);
+				} catch (error) {
+					console.error(`Could not remove webhooks of workflow "${workflow.id}" because of error: "${error.message}"`);
+				}
 
 				let errorMessage = '';
 
-				await Db.collections.Webhook?.delete({ workflowId: workflow.id });
-
 				// if it's a workflow from the the insert
-				// TODO check if there is standard error code for deplicate key violation that works
+				// TODO check if there is standard error code for duplicate key violation that works
 				// with all databases
-				if (error.name === 'MongoError' || error.name === 'QueryFailedError') {
-
+				if (error.name === 'QueryFailedError') {
 					errorMessage = `The webhook path [${webhook.webhookPath}] and method [${webhook.method}] already exist.`;
-
 				} else if (error.detail) {
 					// it's a error runnig the webhook methods (checkExists, create)
 					errorMessage = error.detail;
@@ -317,10 +381,7 @@ export class ActiveWorkflowRunner {
 			await workflow.runWebhookMethod('delete', webhookData, NodeExecuteFunctions, mode, false);
 		}
 
-		// if it's a mongo objectId convert it to string
-		if (typeof workflowData.id === 'object') {
-			workflowData.id = workflowData.id.toString();
-		}
+		await WorkflowHelpers.saveStaticData(workflow);
 
 		const webhook = {
 			workflowId: workflowData.id,
@@ -346,8 +407,8 @@ export class ActiveWorkflowRunner {
 				node,
 				data: {
 					main: data,
-				}
-			}
+				},
+			},
 		];
 
 		const executionData: IRunExecutionData = {
@@ -411,7 +472,7 @@ export class ActiveWorkflowRunner {
 			const returnFunctions = NodeExecuteFunctions.getExecuteTriggerFunctions(workflow, node, additionalData, mode);
 			returnFunctions.emit = (data: INodeExecutionData[][]): void => {
 				WorkflowHelpers.saveStaticData(workflow);
-				this.runWorkflow(workflowData, node, data, additionalData, mode);
+				this.runWorkflow(workflowData, node, data, additionalData, mode).catch((err) => console.error(err));
 			};
 			return returnFunctions;
 		});
@@ -495,7 +556,11 @@ export class ActiveWorkflowRunner {
 
 		if (this.activeWorkflows !== null) {
 			// Remove all the webhooks of the workflow
-			await this.removeWorkflowWebhooks(workflowId);
+			try {
+				await this.removeWorkflowWebhooks(workflowId);
+			} catch (error) {
+				console.error(`Could not remove webhooks of workflow "${workflowId}" because of error: "${error.message}"`);
+			}
 
 			if (this.activationErrors[workflowId] !== undefined) {
 				// If there were any activation errors delete them
